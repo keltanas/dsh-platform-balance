@@ -1,0 +1,10 @@
+# dsh-platform-balance bundle layer.
+#
+# One Loader row carries both halves of the plugin:
+#   - the host half resolves from this package's main export (`lib/index.js`),
+#   - the client half rides the same row: dsh-client-modules scans Loader entries
+#     for packages declaring `dsh.client` (package.json) and serves their
+#     `./client` bundle into the Web boot graph.
+- insert:
+    - id: platform-balance
+      name: 'dsh-platform-balance'

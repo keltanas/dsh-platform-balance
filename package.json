@@ -1,0 +1,54 @@
+{
+  "name": "dsh-platform-balance",
+  "version": "0.1.0",
+  "description": "DSH Web plugin: DeepSeek Platform balance in every wallet currency (USD/CNY), CBR RUB conversion refreshed at 18:00 MSK and cached on disk, plus current-session and current-day spend",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "balance",
+    "cbr",
+    "rub",
+    "usage",
+    "cost"
+  ],
+  "author": "keltanas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keltanas/dsh-platform-balance.git"
+  },
+  "homepage": "https://github.com/keltanas/dsh-platform-balance#readme",
+  "bugs": {
+    "url": "https://github.com/keltanas/dsh-platform-balance/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.ru.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
