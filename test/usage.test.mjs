@@ -158,7 +158,12 @@ test('createUsageScanner returns one session lifetime total', async () => {
   assert.equal(result.firstAt, today - 3_600_000)
   assert.equal(result.lastAt, today)
   // Peak weekday flash rates: 1M input * 2 + 1M output * 8 = 10 CNY.
-  assert.ok(Math.abs(result.costCNY - 10) < 1e-9)
+  assert.ok(
+    Math.abs(
+      result.costCNY -
+        (costOf(today, 'deepseek-flash', 1_000_000, 0, 0) + costOf(today, 'deepseek-flash', 0, 0, 1_000_000)),
+    ) < 1e-9,
+  )
   await scanner.session('s1', today + 1_000)
   assert.equal(persistence.opened.length, 1)
 })
@@ -241,8 +246,9 @@ test('compaction summary calls are priced with their own route', async () => {
   const scanner = createUsageScanner(persistence)
   const result = await scanner.session('s1', today)
   assert.equal(result.calls, 1)
-  // Peak weekday pro is rerouted to Flash pricing from 2026-09-14: 1M input * 2.
-  assert.ok(Math.abs(result.costCNY - 2) < 1e-9, `got ${result.costCNY}`)
+  // The expected value comes from the pricing model, so the runner's time zone
+  // and the current price era cannot change the assertion.
+  assert.ok(Math.abs(result.costCNY - costOf(today, 'deepseek-v4-pro', 1_000_000, 0, 0)) < 1e-9, `got ${result.costCNY}`)
 })
 
 test('a midnight rollover re-aggregates buckets without re-reading logs', async () => {

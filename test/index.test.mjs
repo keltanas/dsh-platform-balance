@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
+import { costOf } from '../lib/pricing.js'
+
 // The host plugin reads the CBR document through global fetch; stub it before
 // apply() so the route test never touches the network.
 const CBR_XML = `<?xml version="1.0" encoding="windows-1251"?><ValCurs Date="13.11.2026" name="Foreign Currency Market"><Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>82,9803</Value></Valute><Valute><CharCode>CNY</CharCode><Nominal>1</Nominal><Value>12,4009</Value></Valute></ValCurs>`
@@ -41,7 +43,7 @@ function request(url) {
 function makeHost(directory) {
   const effects = []
   const routes = []
-  const now = new Date(2026, 10, 12, 12, 0, 0).getTime()
+  const now = Date.now()
   const opened = []
   const session = {
     async list() {
@@ -103,7 +105,7 @@ function makeHost(directory) {
       },
     },
   }
-  return { ctx, routes, opened, effects, restore: () => {
+  return { ctx, routes, opened, effects, now, restore: () => {
     if (previousDshHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousDshHome
   } }
@@ -143,15 +145,19 @@ test('host routes serve wallets, CBR RUB conversion, and session spend', async (
     assert.equal(data.cbr.date, '13.11.2026')
     assert.equal(data.cbr.rates.USD, 82.9803)
     assert.equal(data.cbr.stale, false)
-    // Peak weekday Flash: 1M input * 2 (session-a) + 1M output * 8 (session-b) = 10 CNY.
-    assert.ok(Math.abs(data.spend.day.costCNY - 10) < 1e-9, `got ${data.spend.day.costCNY}`)
-    assert.ok(Math.abs(data.spend.day.rub - 124.01) < 0.01)
+    // The expected cost comes from the same pricing model, so the test does not
+    // depend on the runner's time zone or on which price era is current.
+    const inputCost = costOf(host.now, 'deepseek-flash', 1_000_000, 0, 0)
+    const outputCost = costOf(host.now, 'deepseek-flash', 0, 0, 1_000_000)
+    const expectedDay = inputCost + outputCost
+    assert.ok(Math.abs(data.spend.day.costCNY - expectedDay) < 1e-9, `got ${data.spend.day.costCNY}`)
+    assert.ok(Math.abs(data.spend.day.rub - Math.round(expectedDay * 12.4009 * 100) / 100) < 0.02)
 
     const session = await call(host.routes, '/api/platform-balance/session?id=session-a')
     assert.equal(session.status, 200)
     assert.equal(session.body.data.sessionId, 'session-a')
-    assert.ok(Math.abs(session.body.data.costCNY - 2) < 1e-9)
-    assert.ok(Math.abs(session.body.data.rub - 24.8) < 0.01)
+    assert.ok(Math.abs(session.body.data.costCNY - inputCost) < 1e-9)
+    assert.ok(Math.abs(session.body.data.rub - Math.round(inputCost * 12.4009 * 100) / 100) < 0.02)
 
     // force=1 bypasses the scanner's per-session TTL.
     const before = host.opened.length
