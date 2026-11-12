@@ -188,7 +188,7 @@ Host-часть использует сервисы `webServer`, `credentials`, 
 ```sh
 git clone https://github.com/keltanas/dsh-platform-balance.git
 cd dsh-platform-balance
-node --test test/          # 38 тестов: ЦБ, цены, расход, баланс, HTTP, host-маршруты
+node --test                # 38 тестов: ЦБ, цены, расход, баланс, HTTP, host-маршруты
 node --check lib/*.js      # синтаксис
 ```
 

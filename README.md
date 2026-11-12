@@ -184,7 +184,7 @@ optional `deepseekAccount` service. The browser half needs no npm dependencies: 
 ```sh
 git clone https://github.com/keltanas/dsh-platform-balance.git
 cd dsh-platform-balance
-node --test test/          # 38 tests, no network required
+node --test                # 38 tests, no network required
 node --check lib/*.js      # syntax check
 ```
 
