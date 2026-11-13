@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { costOf, isPeak, pricingInfo, ratesAt, tierOf } from '../lib/pricing.js'
+import { costOf, isDeepSeekRoute, isPeak, pricingInfo, ratesAt, tierOf } from '../lib/pricing.js'
 
 function beijing(iso) {
   // ISO strings with an explicit +08:00 offset already encode the UTC instant.
@@ -63,4 +63,20 @@ test('pricingInfo exposes the current era tier table', () => {
   assert.equal(info.inPeakNow, true)
   assert.equal(info.tiers.length, 2)
   assert.equal(info.tiers[0].peak.input, 2)
+})
+
+test('isDeepSeekRoute gates the price schedule by the platform provider', () => {
+  assert.equal(isDeepSeekRoute('deepseek-account', 'deepseek-flash'), true)
+  assert.equal(isDeepSeekRoute('deepseek-official', 'deepseek-v4-pro'), true)
+  assert.equal(isDeepSeekRoute('DeepSeek', 'deepseek-chat'), true)
+  // Other providers must never be priced by the DeepSeek schedule, even when
+  // the model id looks like a platform model (free gateways, local ollama).
+  assert.equal(isDeepSeekRoute('opencode-go', 'deepseek-v4.1-flash'), false)
+  assert.equal(isDeepSeekRoute('ollama', 'deepseek-r1:latest'), false)
+  assert.equal(isDeepSeekRoute('strata', 'qwen3.8-flash-next'), false)
+  // Legacy logs without a recorded provider fall back to the model id.
+  assert.equal(isDeepSeekRoute('', 'deepseek-chat'), true)
+  assert.equal(isDeepSeekRoute(undefined, 'deepseek-v4-pro'), true)
+  assert.equal(isDeepSeekRoute('', 'qwen2.5-coder:3b-instruct'), false)
+  assert.equal(isDeepSeekRoute(undefined, undefined), false)
 })

@@ -63,6 +63,9 @@ function makeHost(directory) {
           : [
               { type: 'request/header', seq: 0, data: { header: { config: { provider: 'deepseek-account', model: 'deepseek-flash' } } } },
               { type: 'assistant/message', seq: 1, time: now, data: { usage: { inputTokens: 0, outputTokens: 1_000_000, cacheReadTokens: 0 } } },
+              // A request through another provider must not move the day cost.
+              { type: 'request/header', seq: 2, data: { header: { config: { provider: 'ollama', model: 'qwen2.5-coder:3b-instruct' } } } },
+              { type: 'assistant/message', seq: 3, time: now, data: { usage: { inputTokens: 500_000, outputTokens: 500_000, cacheReadTokens: 0 } } },
             ]
       return {
         inheritedEventCount: 0,

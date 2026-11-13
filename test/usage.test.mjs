@@ -130,7 +130,7 @@ test('createUsageScanner sums the current day and reuses unchanged sessions', as
 test('createUsageScanner never trusts a backend without revisions', async () => {
   const today = new Date(2026, 10, 12, 12, 0, 0).getTime()
   const persistence = createPersistence({
-    s1: { revision: undefined, events: [routeEvent('p', 'deepseek-flash'), usageEvent(today, { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0 })] },
+    s1: { revision: undefined, events: [routeEvent('deepseek-account', 'deepseek-flash'), usageEvent(today, { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0 })] },
   })
   const scanner = createUsageScanner(persistence)
   await scanner.day(today)
@@ -144,7 +144,7 @@ test('createUsageScanner returns one session lifetime total', async () => {
     s1: {
       revision: 'r1',
       events: [
-        routeEvent('p', 'deepseek-flash'),
+        routeEvent('deepseek-account', 'deepseek-flash'),
         usageEvent(today - 3_600_000, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0 }),
         usageEvent(today, { inputTokens: 0, outputTokens: 1_000_000, cacheReadTokens: 0 }),
       ],
@@ -192,7 +192,7 @@ test('seeded sessions do not double-count their inherited prefix', async () => {
     parent: {
       revision: 'r1',
       events: withSeq([
-        routeEvent('p', 'deepseek-flash'),
+        routeEvent('deepseek-account', 'deepseek-flash'),
         usageEvent(today - 3_600_000, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0 }),
       ]),
     },
@@ -201,10 +201,10 @@ test('seeded sessions do not double-count their inherited prefix', async () => {
       inherited: 2,
       events: withSeq([
         // Byte-identical inherited prefix copied from the parent log.
-        routeEvent('p', 'deepseek-flash'),
+        routeEvent('deepseek-account', 'deepseek-flash'),
         usageEvent(today - 3_600_000, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0 }),
         // Own work of the forked session.
-        routeEvent('p', 'deepseek-flash'),
+        routeEvent('deepseek-account', 'deepseek-flash'),
         usageEvent(today, { inputTokens: 0, outputTokens: 1_000_000, cacheReadTokens: 0 }),
       ]),
     },
@@ -258,7 +258,7 @@ test('a midnight rollover re-aggregates buckets without re-reading logs', async 
     s1: {
       revision: 'r1',
       events: withSeq([
-        routeEvent('p', 'deepseek-flash'),
+        routeEvent('deepseek-account', 'deepseek-flash'),
         usageEvent(today, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0 }),
       ]),
     },
@@ -278,7 +278,7 @@ test('session(force) bypasses the per-session TTL', async () => {
   const persistence = createPersistence({
     s1: {
       revision: 'r1',
-      events: withSeq([routeEvent('p', 'deepseek-flash'), usageEvent(today, { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0 })]),
+      events: withSeq([routeEvent('deepseek-account', 'deepseek-flash'), usageEvent(today, { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0 })]),
     },
   })
   const scanner = createUsageScanner(persistence)
@@ -287,4 +287,65 @@ test('session(force) bypasses the per-session TTL', async () => {
   assert.equal(persistence.opened.length, 1)
   await scanner.session('s1', { nowMs: today + 1_000, force: true })
   assert.equal(persistence.opened.length, 2)
+})
+
+test('requests through other providers are not priced by the DeepSeek schedule', async () => {
+  const today = new Date(2026, 10, 12, 12, 0, 0).getTime()
+  const persistence = createPersistence({
+    s1: {
+      revision: 'r1',
+      events: withSeq([
+        // A free local model: never billed at DeepSeek prices.
+        routeEvent('ollama', 'qwen2.5-coder:3b-instruct'),
+        usageEvent(today - 3_600_000, { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0 }),
+        // A DeepSeek-named model served by a third-party gateway: still not
+        // the platform, so the platform price schedule does not apply either.
+        routeEvent('opencode-go', 'deepseek-v4.1-flash'),
+        usageEvent(today - 2_000_000, { inputTokens: 5_000_000, outputTokens: 0, cacheReadTokens: 0 }),
+        // The only request that actually spends the DeepSeek platform balance.
+        routeEvent('deepseek-official', 'deepseek-flash'),
+        usageEvent(today, { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0 }),
+        // A summary call billed with its own non-platform route.
+        compactionEvent(today + 1_000, {
+          provider: 'strata',
+          model: 'qwen3.8-flash-next',
+          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0 },
+        }),
+      ]),
+    },
+  })
+  const scanner = createUsageScanner(persistence)
+
+  const result = await scanner.session('s1', today)
+  assert.equal(result.calls, 1, 'only the platform request is priced')
+  assert.equal(result.tokens, 1_000_000)
+  assert.equal(result.otherCalls, 3)
+  assert.equal(result.otherTokens, 7_000_015)
+  const billed = costOf(today, 'deepseek-flash', 1_000_000, 0, 0)
+  assert.ok(Math.abs(result.costCNY - billed) < 1e-9, `got ${result.costCNY}, expected ${billed}`)
+
+  const dayResult = await scanner.day(today + 2_000)
+  assert.equal(dayResult.calls, 1)
+  assert.equal(dayResult.otherCalls, 3)
+  assert.equal(dayResult.otherTokens, 7_000_015)
+  assert.ok(Math.abs(dayResult.costCNY - billed) < 1e-9, `got ${dayResult.costCNY}`)
+})
+
+test('a session on other providers costs nothing but still reports its calls', async () => {
+  const today = new Date(2026, 10, 12, 12, 0, 0).getTime()
+  const persistence = createPersistence({
+    s1: {
+      revision: 'r1',
+      events: withSeq([
+        routeEvent('ollama', 'qwen2.5-coder:3b-instruct'),
+        usageEvent(today, { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0 }),
+      ]),
+    },
+  })
+  const scanner = createUsageScanner(persistence)
+  const result = await scanner.session('s1', today)
+  assert.equal(result.costCNY, 0)
+  assert.equal(result.calls, 0)
+  assert.equal(result.otherCalls, 1)
+  assert.equal(result.tokens, 0)
 })

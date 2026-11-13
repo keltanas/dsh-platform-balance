@@ -23,7 +23,7 @@ Two pieces of UI appear:
 |---|---|
 | Balance | DSH account service (`deepseekAccount.getBalance`, browser sign-in, no API key); when the account is signed out — `DEEPSEEK_API_KEY` via `https://api.deepseek.com/user/balance` |
 | CBR rate | Official CBR XML feed `https://www.cbr.ru/scripts/XML_daily.asp`, USD and CNY against RUB |
-| Spend | DSH session logs (`ctx.sessionPersistence`): request token usage × official DeepSeek prices in CNY |
+| Spend | DSH session logs (`ctx.sessionPersistence`): request token usage × official DeepSeek prices in CNY, billed only for requests routed through the DeepSeek platform |
 
 The plugin sends no data anywhere except two requests: the CBR feed (for the rate) and, when
 there is no signed-in account, `api.deepseek.com` (for the balance). Its HTTP routes are
@@ -57,6 +57,14 @@ counts and the official DeepSeek CNY price list, taking into account:
 The price table lives in [`lib/pricing.js`](lib/pricing.js); when DeepSeek changes its prices,
 that is the only file to update. Numbers in the UI are prefixed with `≈`: this is an estimate,
 not a bill.
+
+Only DeepSeek platform routes are priced: a request is billed when its provider is DeepSeek
+(`deepseek-account`, `deepseek-official`, or any provider id containing `deepseek`). Sessions
+running on other providers — a local `ollama`, a free third-party gateway, another API — never
+spend the platform balance, so their requests are not priced at all, even when the model id
+looks like a DeepSeek model (`opencode-go` serving `deepseek-v4.1-flash` is still not the
+platform). Such requests are reported separately as `otherCalls`/`otherTokens`, add nothing to
+the money totals, and the widget notes them as "not DeepSeek".
 
 Paid summarization calls (`compaction/summary`) are included. Forked sessions (subagents with an
 inherited history) skip the copied parent prefix in their log, so the daily total is not counted
@@ -135,7 +143,7 @@ All routes are `GET`, loopback-only and same-origin, with `cache-control: no-sto
       "currency": "CNY",
       "estimated": true,
       "pricing": { "...": "current price era table" },
-      "day": { "dayKey": "2026-11-12", "costCNY": 2.5, "rub": 31.0, "calls": 37, "tokens": 1234567 }
+      "day": { "dayKey": "2026-11-12", "costCNY": 2.5, "rub": 31.0, "calls": 37, "tokens": 1234567, "otherCalls": 5, "otherTokens": 42000 }
     }
   }
 }
@@ -154,6 +162,8 @@ All routes are `GET`, loopback-only and same-origin, with `cache-control: no-sto
     "rub": 5.58,
     "calls": 12,
     "tokens": 34567,
+    "otherCalls": 0,
+    "otherTokens": 0,
     "lastAt": 1790000000000
   }
 }
@@ -194,6 +204,8 @@ Host-half edits are cached by Node after the first import and apply on the next 
 ## Limitations
 
 - Spend is an estimate, not billing; the price table can lag behind DeepSeek price changes.
+- A custom provider that proxies DeepSeek under an id without `deepseek` in it is treated as a
+  third party and is not billed.
 - A wallet whose currency has no CBR rate converts to `null` (`— ₽` in the UI).
 - No balance history or "days left" forecast.
 - The day boundary follows the DSH host's time zone, not the browser's.

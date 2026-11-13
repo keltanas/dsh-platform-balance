@@ -1,6 +1,6 @@
 {
   "name": "dsh-platform-balance",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH Web plugin: DeepSeek Platform balance in every wallet currency (USD/CNY), CBR RUB conversion refreshed at 18:00 MSK and cached on disk, plus current-session and current-day spend",
   "keywords": [
     "dsh",
